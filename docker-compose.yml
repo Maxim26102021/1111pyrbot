@@ -13,29 +13,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7
     volumes:
       - redisdata:/data
+    restart: unless-stopped
 
   reader:
-    image: ${DOCKERHUB_USERNAME}/reader:latest  # Используем образ из Docker Hub
+    image: ${DOCKERHUB_USERNAME}/reader:latest
     env_file: .env
     volumes:
       - ./sessions:/app/sessions
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
 
   bot:
-    image: ${DOCKERHUB_USERNAME}/bot:latest  # Используем образ из Docker Hub
+    image: ${DOCKERHUB_USERNAME}/bot:latest
     env_file: .env
     volumes:
       - ./sessions:/app/sessions
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:
