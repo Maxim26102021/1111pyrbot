@@ -14,6 +14,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    ports:
+      - "5432:5432"  # Важно: добавьте эту строку, если её нет
 
   redis:
     image: redis:7
