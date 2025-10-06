@@ -1,1 +1,4 @@
 .env
+.idea
+.github/workflows
+docker-compose.yml
