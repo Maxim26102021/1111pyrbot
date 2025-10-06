@@ -45,29 +45,31 @@ jobs:
         POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
         POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
         POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+        REDIS_PORT: ${{ secrets.REDIS_PORT }}
+        REDIS_HOST: ${{ secrets.REDIS_HOST }}
         DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
+        TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+        TELEGRAM_SESSION_NAME: ${{ secrets.TELEGRAM_SESSION_NAME }}
+        TZ: ${{ secrets.TZ }}
       run: |
-        # Отладка: Проверяем переменные
-        echo "SERVER_USER: $SERVER_USER"
-        echo "SERVER_HOST: $SERVER_HOST"
-        
         # Создаём временный SSH-ключ
         echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
-        ls -l private_key
         
         # Создаём директорию на сервере
         ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "
           mkdir -p /var/www/myapp
-          mkdir -p /var/www/myapp/common/sql
           mkdir -p /var/www/myapp/sessions
           chmod -R 775 /var/www/myapp
         "
         
-        # Копируем docker-compose.yml
-        scp -o StrictHostKeyChecking=no -i private_key ./docker-compose.yml $SERVER_USER@$SERVER_HOST:/var/www/myapp/docker-compose.yml
-        
-        # Копируем SQL-скрипт
-        scp -o StrictHostKeyChecking=no -i private_key ./common/sql/001_init.sql $SERVER_USER@$SERVER_HOST:/var/www/myapp/common/sql/001_init.sql
+        # Копируем всю структуру проекта (кроме .git)
+        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no -i private_key" --exclude='.git' --exclude='.github' ./ $SERVER_USER@$SERVER_HOST:/var/www/myapp/
         
         # Создаём .env и запускаем
         ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "
