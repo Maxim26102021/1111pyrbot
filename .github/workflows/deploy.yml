@@ -1,0 +1,69 @@
+name: Build and Deploy to Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push reader image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: reader/Dockerfile
+        push: true
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/reader:latest
+
+    - name: Build and push bot image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: bot/Dockerfile
+        push: true
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/bot:latest
+
+    - name: Deploy to server
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        # Добавь другие переменные из .env, если нужно
+      run: |
+        # Создаём временный SSH-ключ
+        echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
+
+        # Копируем docker-compose.yml на сервер
+        scp -o StrictHostKeyChecking=no -i private_key ./docker-compose.yml $SERVER_USER@$SERVER_HOST:/var/www/myapp/docker-compose.yml
+
+        # Создаём .env на сервере
+        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "
+          mkdir -p /var/www/myapp
+          cd /var/www/myapp
+          echo 'POSTGRES_DB=$POSTGRES_DB' > .env
+          echo 'POSTGRES_USER=$POSTGRES_USER' >> .env
+          echo 'POSTGRES_PASSWORD=$POSTGRES_PASSWORD' >> .env
+          # Добавь другие переменные
+          docker compose pull  # Тянем новые образы
+          docker compose up -d --remove-orphans  # Запускаем
+        "
+
+        # Чистим
+        rm -rf private_key

@@ -37,7 +37,6 @@ except (ValueError, TypeError) as e:
     logger.critical(f"FATAL: Env variables are not configured correctly. Error: {e}")
     sys.exit(1)
 
-# Используем файловую сессию
 bot = Client(
     "/app/sessions/bot",
     api_id=API_ID,
@@ -45,7 +44,6 @@ bot = Client(
     bot_token=BOT_TOKEN,
 )
 
-# Инициализируем планировщик
 scheduler = AsyncIOScheduler(timezone=str(TZ))
 
 HELP = (
@@ -60,7 +58,7 @@ HELP = (
     "/buy — оформить Pro (заглушка)\n"
 )
 
-# ---------- UTILS (без изменений) ----------
+# ---------- UTILS ----------
 def parse_hours(args):
     hours = []
     for t in args:
@@ -82,7 +80,6 @@ def pick(obj, key, default=None):
         except Exception:
             return default
 
-# ... (остальные утилиты без изменений) ...
 async def send_text_in_chunks(chat_id: int, text: str):
     MAX = 4096
     if len(text) <= MAX:
@@ -92,20 +89,14 @@ async def send_text_in_chunks(chat_id: int, text: str):
     for para in text.split("\n\n"):
         cand = (buf + ("\n\n" if buf else "") + para)
         if len(cand) > MAX:
-            if buf:
-                parts.append(buf); buf = para
-                if len(buf) > MAX:
-                    while len(buf) > MAX:
-                        parts.append(buf[:MAX]); buf = buf[MAX:]
-            else:
-                p = para
-                while len(p) > MAX:
-                    parts.append(p[:MAX]); p = p[MAX:]
-                buf = p
+            if buf: parts.append(buf)
+            buf = para
+            while len(buf) > MAX:
+                parts.append(buf[:MAX])
+                buf = buf[MAX:]
         else:
             buf = cand
-    if buf:
-        parts.append(buf)
+    if buf: parts.append(buf)
     for p in parts:
         await bot.send_message(chat_id=chat_id, text=p, disable_web_page_preview=True)
 
@@ -119,36 +110,110 @@ def window_for_now(now: datetime):
         end = now.replace(minute=0, second=0, microsecond=0)
     return start, end
 
-
-# ---------- HANDLERS (без изменений) ----------
-@bot.on_message(filters.command("start") & filters.private, group=0)
-async def on_start(_, m):
+# ---------- HANDLERS ----------
+@bot.on_message(filters.command("start") & filters.private)
+async def on_start(client, message):
     try:
-        upsert_user(m.from_user.id)
-        await m.reply_text("👋 Привет! Я собираю новости из твоих каналов и присылаю дайджест 2 раза в день.\n\n" + HELP)
+        upsert_user(message.from_user.id)
+        await message.reply_text("👋 Привет! Я собираю новости из ваших каналов и присылаю дайджест 2 раза в день.\n\n" + HELP)
     except Exception:
         logger.exception("Error in /start")
-        try: await m.reply_text("Произошла ошибка при запуске. Попробуй позже.")
-        except Exception: pass
+        await message.reply_text("Произошла ошибка. Попробуйте позже.")
 
-@bot.on_message(filters.private, group=1)
-async def catch_all_messages(_, message):
-    logger.info(f"Non-command message from {message.from_user.id}: {getattr(message, 'text', None)!r}")
-
-
-# === DEBUG: логируем вообще все входящие сообщения ===
-@bot.on_message(group=-1)
-async def __debug_all_updates(_, m):
+@bot.on_message(filters.command("add") & filters.private)
+async def on_add(client, message):
     try:
-        logger.info(f"[DEBUG] update: chat_type={getattr(m.chat, 'type', None)} from={getattr(m.from_user, 'id', None)} text={getattr(m,'text',None)!r}")
+        parts = message.text.split()
+        if len(parts) < 2:
+            return await message.reply_text("Укажи @канал. Пример: /add @neuralnews")
+        handle = parts[1]
+        subscribe_user_to_channel(message.from_user.id, handle)
+        await message.reply_text(f"Добавил {handle}.")
     except Exception:
-        logger.exception("debug logger failed")
+        logger.exception("Error in /add")
+        await message.reply_text("Не удалось добавить канал.")
 
+@bot.on_message(filters.command("list") & filters.private)
+async def on_list(client, message):
+    try:
+        lst = list_user_channels(message.from_user.id)
+        if not lst:
+            return await message.reply_text("Пусто. Добавь командой /add @канал")
+        await message.reply_text("Твои источники:\n" + "\n".join(lst))
+    except Exception:
+        logger.exception("Error in /list")
+        await message.reply_text("Не удалось получить список каналов.")
 
-# ---------- DIGEST & SCHEDULER (без изменений) ----------
+@bot.on_message(filters.command("remove") & filters.private)
+async def on_remove(client, message):
+    try:
+        parts = message.text.split()
+        if len(parts) < 2:
+            return await message.reply_text("Укажи @канал. Пример: /remove @neuralnews")
+        remove_user_channel(message.from_user.id, parts[1])
+        await message.reply_text("Готово.")
+    except Exception:
+        logger.exception("Error in /remove")
+        await message.reply_text("Не удалось удалить канал.")
+
+@bot.on_message(filters.command("when") & filters.private)
+async def on_when(client, message):
+    try:
+        parts = message.text.split()[1:]
+        if not parts:
+             return await message.reply_text("Укажи время так: /when 09:00 19:30")
+        hours = parse_hours(parts)
+        if not hours:
+            return await message.reply_text("Не удалось распознать время. Пример: /when 09:00 19:30")
+        set_user_hours(message.from_user.id, hours)
+        await message.reply_text(f"Ок! Часы дайджеста: {', '.join(map(str, hours))}")
+    except Exception:
+        logger.exception("Error in /when")
+        await message.reply_text("Произошла ошибка.")
+
+@bot.on_message(filters.command("digest_now") & filters.private)
+async def on_digest_now(client, message):
+    try:
+        u = get_user_by_tg(message.from_user.id)
+        if not u:
+            upsert_user(message.from_user.id)
+            u = get_user_by_tg(message.from_user.id)
+        await message.reply_text("Собираю дайджест за последнее окно...")
+        await send_digest_to_user(u)
+    except Exception:
+        logger.exception("Error in /digest_now")
+        await message.reply_text("Не удалось собрать дайджест.")
+
+@bot.on_message(filters.command("plan") & filters.private)
+async def on_plan(client, message):
+    await message.reply_text("Free: до 5 источников. Pro: до 100 источников и дополнительные окна. Оформить: /buy (пока заглушка)")
+
+@bot.on_message(filters.command("buy") & filters.private)
+async def on_buy(client, message):
+    try:
+        with session_scope() as s:
+            s.execute(
+                sql("UPDATE users SET plan='pro', valid_until=NOW() + INTERVAL '30 days' WHERE tg_id=:tg"),
+                {"tg": message.from_user.id},
+            )
+        await message.reply_text("Готово! Включил Pro на 30 дней (заглушка).")
+    except Exception:
+        logger.exception("Error in /buy")
+        await message.reply_text("Произошла ошибка.")
+
+@bot.on_message(filters.private)
+async def on_private_message(client, message):
+    logger.info(f"Caught a non-command private message from {message.from_user.id}: {message.text!r}")
+    await message.reply_text("Неизвестная команда. Используйте /start для получения списка команд.")
+
+# ---------- DIGEST & SCHEDULER ----------
 async def send_digest_to_user(user):
     user_id = pick(user, "id")
     tg_id = pick(user, "tg_id")
+    if not user_id or not tg_id:
+        logger.error(f"Invalid user object for digest: {user}")
+        return
+
     now = datetime.now(TZ)
     start, end = window_for_now(now)
     try:
@@ -159,9 +224,18 @@ async def send_digest_to_user(user):
             if key and key not in uniq:
                 uniq[key] = {"text": it.get("text"), "link": it.get("link")}
         items_list = list(uniq.values())
+
+        if not items_list:
+            logger.info(f"No new messages for user {user_id} in window {start} - {end}, skipping digest.")
+            # Можно отправить сообщение "Нет новостей", если нужно
+            # await bot.send_message(tg_id, "За последнее время не было новостей.")
+            return
+
         digest = (build_digest(items_list) or "").strip()
         if not digest or digest == "НЕДОСТАТОЧНО НОВОСТЕЙ":
+            logger.info(f"Not enough news to build digest for user {user_id}.")
             return
+
         save_digest(user_id, start, end, len(items_list), digest, sent_to="user")
         await send_text_in_chunks(chat_id=tg_id, text=digest)
     except Exception:
@@ -171,15 +245,14 @@ async def scheduler_tick():
     now = datetime.now(TZ)
     try:
         users = due_users(now.hour, now.minute) or []
+        logger.info(f"Scheduler tick: found {len(users)} users due for a digest.")
         for u in users:
             await send_digest_to_user(u)
     except Exception:
         logger.exception("Scheduler tick failed")
 
-
 # ---------- MAIN LOGIC ----------
 def startup_tasks():
-    # Эта функция будет выполняться ДО запуска Pyrogram
     logger.info("Running startup tasks...")
     try:
         run_migrations()
@@ -188,20 +261,12 @@ def startup_tasks():
         logger.info("Migrations and scheduler setup complete.")
     except Exception:
         logger.exception("Startup tasks failed!")
-        # Можно завершить процесс, если миграции критичны
-        # sys.exit(1)
 
 if __name__ == "__main__":
     logger.info("Starting bot application...")
-    # 1. Выполняем синхронные задачи подготовки
     startup_tasks()
-
-    # 2. Запускаем бота через bot.run().
-    # Этот метод сам управляет циклом, запуском, остановкой по SIGTERM.
-    # Это решает проблему "attached to a different loop".
     bot.run()
 
-    # После остановки бота (например, по Ctrl+C)
     if scheduler.running:
         scheduler.shutdown()
     logger.info("Bot application stopped.")
