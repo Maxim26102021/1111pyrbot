@@ -45,25 +45,41 @@ jobs:
         POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
         POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
         POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        # Добавь другие переменные из .env, если нужно
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       run: |
+        # Отладка: Проверяем переменные
+        echo "SERVER_USER: $SERVER_USER"
+        echo "SERVER_HOST: $SERVER_HOST"
+        
         # Создаём временный SSH-ключ
         echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
-
-        # Копируем docker-compose.yml на сервер
-        scp -o StrictHostKeyChecking=no -i private_key ./docker-compose.yml $SERVER_USER@$SERVER_HOST:/var/www/myapp/docker-compose.yml
-
-        # Создаём .env на сервере
+        ls -l private_key
+        
+        # Создаём директорию на сервере
         ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "
           mkdir -p /var/www/myapp
+          mkdir -p /var/www/myapp/common/sql
+          mkdir -p /var/www/myapp/sessions
+          chmod -R 775 /var/www/myapp
+        "
+        
+        # Копируем docker-compose.yml
+        scp -o StrictHostKeyChecking=no -i private_key ./docker-compose.yml $SERVER_USER@$SERVER_HOST:/var/www/myapp/docker-compose.yml
+        
+        # Копируем SQL-скрипт
+        scp -o StrictHostKeyChecking=no -i private_key ./common/sql/001_init.sql $SERVER_USER@$SERVER_HOST:/var/www/myapp/common/sql/001_init.sql
+        
+        # Создаём .env и запускаем
+        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "
           cd /var/www/myapp
           echo 'POSTGRES_DB=$POSTGRES_DB' > .env
           echo 'POSTGRES_USER=$POSTGRES_USER' >> .env
           echo 'POSTGRES_PASSWORD=$POSTGRES_PASSWORD' >> .env
-          # Добавь другие переменные
-          docker compose pull  # Тянем новые образы
-          docker compose up -d --remove-orphans  # Запускаем
+          echo 'DOCKERHUB_USERNAME=$DOCKERHUB_USERNAME' >> .env
+          docker compose pull
+          docker compose up -d --remove-orphans
+          docker system prune -f
         "
-
+        
         # Чистим
         rm -rf private_key
