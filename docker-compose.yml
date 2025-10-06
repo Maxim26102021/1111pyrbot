@@ -15,7 +15,7 @@ services:
       retries: 5
     restart: unless-stopped
     ports:
-      - "5432:5432"  # Важно: добавьте эту строку, если её нет
+      - "0.0.0.0:5433:5432"  # Важно: добавьте эту строку, если её нет
 
   redis:
     image: redis:7
