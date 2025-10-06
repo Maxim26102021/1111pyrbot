@@ -21,3 +21,4 @@ docker compose run --rm reader python /app/login_service_account.py
 ## Безопасность
 - Не публикуйте порты БД/Redis наружу (в compose они не публикуются).
 - Секреты держите в `.env` (не коммитьте).
+1
