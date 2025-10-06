@@ -69,14 +69,14 @@ jobs:
         "
         
         # Копируем всю структуру проекта (кроме .git), избегая удаления существующих сессий
-        rsync -avz --exclude='sessions/bot/*' --delete-excluded -e \"ssh -o StrictHostKeyChecking=no -i private_key\" --exclude='.git' --exclude='.github' ./ $SERVER_USER@$SERVER_HOST:/var/www/myapp/
+        rsync -avz --exclude='sessions/bot/*' --delete-excluded -e "ssh -o StrictHostKeyChecking=no -i private_key" --exclude='.git' --exclude='.github' ./ $SERVER_USER@$SERVER_HOST:/var/www/myapp/
         
         # Останавливаем и удаляем старые контейнеры
-        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST \"docker compose down || true\"
-        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST \"docker rm -f \$(docker ps -a -q) || true\"
+        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "docker compose down || true"
+        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "docker rm -f \$(docker ps -a -q) || true"
         
         # Создаём .env и запускаем
-        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST \"cd /var/www/myapp && \
+        ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "cd /var/www/myapp && \
           echo 'POSTGRES_DB=$POSTGRES_DB' > .env && \
           echo 'POSTGRES_USER=$POSTGRES_USER' >> .env && \
           echo 'POSTGRES_PASSWORD=$POSTGRES_PASSWORD' >> .env && \
@@ -95,7 +95,7 @@ jobs:
           docker compose pull && \
           docker compose up -d --remove-orphans && \
           docker system prune -f && \
-          docker compose logs bot\"
+          docker compose logs bot"
         
         # Чистим
         rm -rf private_key
