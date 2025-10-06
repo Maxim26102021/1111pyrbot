@@ -35,7 +35,7 @@ jobs:
         context: .
         file: bot/Dockerfile
         push: true
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/bot:latest
+        tags: ${{ secrets.DOCKERHUB_USERNAME}}/bot:latest
 
     - name: Deploy to server
       env:
@@ -61,27 +61,21 @@ jobs:
         # Создаём временный SSH-ключ
         echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
         
-        # Создаём директорию на сервере
+        # Создаём директорию на сервере и устанавливаем права
         ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "
           mkdir -p /var/www/myapp
-          mkdir -p /var/www/myapp/sessions
-          chmod -R 775 /var/www/myapp
+          mkdir -p /var/www/myapp/sessions/bot
+          chmod -R 777 /var/www/myapp/sessions
         "
         
         # Копируем всю структуру проекта (кроме .git)
         rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no -i private_key" --exclude='.git' --exclude='.github' ./ $SERVER_USER@$SERVER_HOST:/var/www/myapp/
         
+        # Останавливаем и удаляем старые контейнеры
+        docker compose down || true
+        docker rm -f $(docker ps -a -q) || true
+        
         # Создаём .env и запускаем
         ssh -o StrictHostKeyChecking=no -i private_key $SERVER_USER@$SERVER_HOST "
           cd /var/www/myapp
-          echo 'POSTGRES_DB=$POSTGRES_DB' > .env
-          echo 'POSTGRES_USER=$POSTGRES_USER' >> .env
-          echo 'POSTGRES_PASSWORD=$POSTGRES_PASSWORD' >> .env
-          echo 'DOCKERHUB_USERNAME=$DOCKERHUB_USERNAME' >> .env
-          docker compose pull
-          docker compose up -d --remove-orphans
-          docker system prune -f
-        "
-        
-        # Чистим
-        rm -rf private_key
+          echo 'POSTGRES_DB=$
