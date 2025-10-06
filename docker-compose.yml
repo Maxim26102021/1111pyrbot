@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./common/sql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql  # Обновите путь
+      - ./common/sql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -20,9 +20,7 @@ services:
       - redisdata:/data
 
   reader:
-    build:
-      context: .
-      dockerfile: reader/Dockerfile
+    image: ${DOCKERHUB_USERNAME}/reader:latest  # Используем образ из Docker Hub
     env_file: .env
     volumes:
       - ./sessions:/app/sessions
@@ -31,12 +29,10 @@ services:
         condition: service_healthy
 
   bot:
-    build:
-      context: .
-      dockerfile: bot/Dockerfile
+    image: ${DOCKERHUB_USERNAME}/bot:latest  # Используем образ из Docker Hub
     env_file: .env
     volumes:
-      - ./sessions:/app/sessions  # Добавить это
+      - ./sessions:/app/sessions
     depends_on:
       db:
         condition: service_healthy
