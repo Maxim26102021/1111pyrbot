@@ -1,7 +1,6 @@
 import os, asyncio, pytz, logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pyrogram import Client
-from pyrogram.errors import FloodWait, RPCError, AuthKeyInvalid, SessionPasswordNeeded
 from sqlalchemy import text
 from common.db import run_migrations, session_scope
 from common.models import add_messages
@@ -12,13 +11,17 @@ logger = logging.getLogger(__name__)
 
 API_ID = int(os.getenv("TELEGRAM_API_ID"))
 API_HASH = os.getenv("TELEGRAM_API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Используем токен бота для авторизации
-SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "service1")
-SESSIONS_DIR = "/app/sessions"
-POLL_LIMIT = 200
-SLEEP_BETWEEN_CHANNELS = 2
-CYCLE_PAUSE = 60
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 TZ = pytz.timezone(os.getenv("TZ", "Europe/Amsterdam"))
+CYCLE_PAUSE = 300  # 5 минут между проверками
+
+# Создаем клиент для чтения каналов
+client = Client(
+    "channel_reader",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+)
 
 def fetch_channels():
     with session_scope() as s:
@@ -29,88 +32,119 @@ def update_last_msg_id(channel_id: int, last_id: int):
     with session_scope() as s:
         s.execute(text("UPDATE channels SET last_msg_id=:m, last_checked_at=NOW() WHERE id=:c"), {'m': last_id, 'c': channel_id})
 
-async def poll_channel(app: Client, channel):
-    handle = channel['handle']
-    print(f"[reader] Polling @{handle} from last_msg_id={channel['last_msg_id']}")
+async def fetch_channel_messages(channel):
+    """Получение сообщений канала через Telegram API"""
+    handle = channel['handle'].lstrip('@')
+    last_msg_id = channel.get('last_msg_id', 0)
+    
+    logger.info(f"Fetching messages from @{handle} (last_msg_id: {last_msg_id})")
+    
     try:
-        chat = await app.get_chat(handle)
-    except RPCError as e:
-        print(f"[reader] can't get chat @{handle}: {e}")
-        return
-
-    new_items = []
-    max_id = channel['last_msg_id'] or 0
-    try:
-        async for m in app.get_chat_history(chat.id, limit=POLL_LIMIT):
-            if m.id <= (channel['last_msg_id'] or 0):
-                break
-            text_content = m.text or m.caption
-            if not text_content:
-                continue
-            msg_dt = m.date.astimezone(pytz.UTC).astimezone(TZ)
-            link = f"https://t.me/{chat.username}/{m.id}" if chat.username else None
-            new_items.append({
-                'channel_id': channel['id'],
-                'tg_message_id': m.id,
-                'msg_date': msg_dt,
-                'link': link,
-                'text': text_content
-            })
-            if m.id > max_id:
-                max_id = m.id
-        if new_items:
-            new_items.sort(key=lambda x: x['tg_message_id'])
-            add_messages(new_items)
-            update_last_msg_id(channel['id'], max_id)
-            print(f"[reader] @{handle}: +{len(new_items)} new (last_id={max_id})")
-    except FloodWait as e:
-        print(f"[reader] FLOOD_WAIT for @{handle}: sleep {e.value}s")
-        await asyncio.sleep(e.value)
-    except RPCError as e:
-        print(f"[reader] RPC error on @{handle}: {e}")
-    await asyncio.sleep(SLEEP_BETWEEN_CHANNELS)
+        # Получаем информацию о канале
+        chat = await client.get_chat(f"@{handle}")
+        if not chat:
+            logger.error(f"Could not access channel @{handle}")
+            return []
+            
+        messages = []
+        
+        # Получаем последние сообщения из канала
+        # Используем get_messages вместо get_chat_history
+        try:
+            # Пытаемся получить сообщения начиная с последнего известного ID
+            start_id = last_msg_id + 1 if last_msg_id > 0 else 1
+            end_id = start_id + 50  # Получаем до 50 сообщений
+            
+            # Получаем сообщения по ID
+            for msg_id in range(start_id, end_id):
+                try:
+                    message = await client.get_messages(chat.id, msg_id)
+                    if message and message.text:
+                        # Создаем ссылку на сообщение
+                        link = f"https://t.me/{handle}/{message.id}"
+                        
+                        # Конвертируем дату в нужный часовой пояс
+                        msg_date = message.date.astimezone(TZ)
+                        
+                        messages.append({
+                            'channel_id': channel['id'],
+                            'tg_message_id': message.id,
+                            'msg_date': msg_date,
+                            'link': link,
+                            'text': message.text
+                        })
+                except Exception:
+                    # Если сообщение не найдено, пропускаем
+                    continue
+                    
+        except Exception as e:
+            logger.warning(f"Could not fetch messages by ID from @{handle}: {e}")
+            # Fallback: попробуем получить последние сообщения другим способом
+            try:
+                # Получаем последние сообщения через get_messages без указания ID
+                recent_messages = await client.get_messages(chat.id, limit=20)
+                for message in recent_messages:
+                    if message and message.id > last_msg_id and message.text:
+                        # Создаем ссылку на сообщение
+                        link = f"https://t.me/{handle}/{message.id}"
+                        
+                        # Конвертируем дату в нужный часовой пояс
+                        msg_date = message.date.astimezone(TZ)
+                        
+                        messages.append({
+                            'channel_id': channel['id'],
+                            'tg_message_id': message.id,
+                            'msg_date': msg_date,
+                            'link': link,
+                            'text': message.text
+                        })
+            except Exception as e2:
+                logger.error(f"Fallback method also failed for @{handle}: {e2}")
+                return []
+            
+        logger.info(f"Found {len(messages)} new messages from @{handle}")
+        return messages
+        
+    except Exception as e:
+        logger.error(f"Error fetching messages from @{handle}: {e}")
+        return []
 
 async def main():
     run_migrations()
 
-    # Проверяем наличие bot token
-    if not BOT_TOKEN:
-        logger.error("BOT_TOKEN не найден в переменных окружения")
-        return
+    logger.info("Reader service started with Telegram API")
 
-    # Используем bot token для авторизации
-    app = Client(
-        "bot_reader",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=BOT_TOKEN,
-        workdir=SESSIONS_DIR
-    )
+    async with client:
+        while True:
+            channels = fetch_channels()
+            logger.info(f"Found {len(channels)} active channels to poll")
 
-    try:
-        async with app:
-            logger.info("Reader service started successfully with bot token")
-            me = await app.get_me()
-            logger.info(f"Authorized as: @{me.username}")
-
-            while True:
-                channels = fetch_channels()
-                logger.info(f"Found {len(channels)} active channels to poll")
-
-                if not channels:
-                    logger.info("No channels to poll. Sleeping...")
-                    await asyncio.sleep(CYCLE_PAUSE)
-                    continue
-
-                for ch in channels:
-                    await poll_channel(app, ch)
-
-                logger.info(f"Completed polling cycle. Sleeping for {CYCLE_PAUSE}s...")
+            if not channels:
+                logger.info("No channels to poll. Sleeping...")
                 await asyncio.sleep(CYCLE_PAUSE)
+                continue
 
-    except Exception as e:
-        logger.error(f"Error in main loop: {e}")
-        raise
+            all_messages = []
+
+            for ch in channels:
+                # Используем Telegram API для получения сообщений
+                messages = await fetch_channel_messages(ch)
+                if messages:
+                    all_messages.extend(messages)
+                    logger.info(f"Fetched {len(messages)} messages from @{ch['handle']}")
+                    
+                    # Обновляем last_msg_id для канала
+                    if messages:
+                        latest_id = max(msg['tg_message_id'] for msg in messages)
+                        update_last_msg_id(ch['id'], latest_id)
+
+            if all_messages:
+                # Сохраняем все сообщения в базу данных
+                add_messages(all_messages)
+                logger.info(f"Saved {len(all_messages)} messages to database")
+
+            logger.info(f"Completed fetching cycle. Sleeping for {CYCLE_PAUSE}s...")
+            await asyncio.sleep(CYCLE_PAUSE)
 
 if __name__ == "__main__":
     asyncio.run(main())
