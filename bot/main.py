@@ -220,7 +220,7 @@ async def on_debug(client, message):
         logger.exception("Error in /debug")
         await message.reply_text("Ошибка получения статистики.")
 
-@bot.on_message(filters.private)
+@bot.on_message(filters.private & ~filters.me)
 async def on_private_message(client, message):
     logger.info(f"Caught a non-command private message from {message.from_user.id}: {message.text!r}")
     await message.reply_text("Неизвестная команда. Используйте /start для получения списка команд.")

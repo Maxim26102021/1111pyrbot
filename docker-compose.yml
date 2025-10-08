@@ -24,7 +24,9 @@ services:
     restart: unless-stopped
 
   reader:
-    image: ${DOCKERHUB_USERNAME}/reader:latest
+    build:
+      context: .
+      dockerfile: reader/Dockerfile
     env_file: .env
     volumes:
       - ./sessions:/app/sessions
@@ -34,7 +36,9 @@ services:
     restart: unless-stopped
 
   bot:
-    image: ${DOCKERHUB_USERNAME}/bot:latest
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
     env_file: .env
     volumes:
       - ./sessions:/app/sessions

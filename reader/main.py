@@ -1,13 +1,18 @@
-import os, asyncio, pytz
+import os, asyncio, pytz, logging
 from datetime import datetime
 from pyrogram import Client
-from pyrogram.errors import FloodWait, RPCError
+from pyrogram.errors import FloodWait, RPCError, AuthKeyInvalid, SessionPasswordNeeded
 from sqlalchemy import text
 from common.db import run_migrations, session_scope
 from common.models import add_messages
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 API_ID = int(os.getenv("TELEGRAM_API_ID"))
 API_HASH = os.getenv("TELEGRAM_API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Используем токен бота для авторизации
 SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "service1")
 SESSIONS_DIR = "/app/sessions"
 POLL_LIMIT = 200
@@ -67,20 +72,45 @@ async def poll_channel(app: Client, channel):
 
 async def main():
     run_migrations()
-    app = Client(SESSION_NAME, api_id=API_ID, api_hash=API_HASH, workdir=SESSIONS_DIR)
-    async with app:
-        print(f"[reader] Started polling service. Session: {SESSION_NAME}")
-        while True:
-            channels = fetch_channels()
-            print(f"[reader] Found {len(channels)} active channels to poll")
-            if not channels:
-                print("[reader] No channels to poll. Sleeping...")
+
+    # Проверяем наличие bot token
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN не найден в переменных окружения")
+        return
+
+    # Используем bot token для авторизации
+    app = Client(
+        "bot_reader",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        workdir=SESSIONS_DIR
+    )
+
+    try:
+        async with app:
+            logger.info("Reader service started successfully with bot token")
+            me = await app.get_me()
+            logger.info(f"Authorized as: @{me.username}")
+
+            while True:
+                channels = fetch_channels()
+                logger.info(f"Found {len(channels)} active channels to poll")
+
+                if not channels:
+                    logger.info("No channels to poll. Sleeping...")
+                    await asyncio.sleep(CYCLE_PAUSE)
+                    continue
+
+                for ch in channels:
+                    await poll_channel(app, ch)
+
+                logger.info(f"Completed polling cycle. Sleeping for {CYCLE_PAUSE}s...")
                 await asyncio.sleep(CYCLE_PAUSE)
-                continue
-            for ch in channels:
-                await poll_channel(app, ch)
-            print(f"[reader] Completed polling cycle. Sleeping for {CYCLE_PAUSE}s...")
-            await asyncio.sleep(CYCLE_PAUSE)
+
+    except Exception as e:
+        logger.error(f"Error in main loop: {e}")
+        raise
 
 if __name__ == "__main__":
     asyncio.run(main())
