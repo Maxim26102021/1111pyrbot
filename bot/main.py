@@ -13,7 +13,7 @@ from common.db import run_migrations, session_scope
 from common.models import (
     upsert_user, get_user_by_tg, set_user_hours,
     subscribe_user_to_channel, list_user_channels, remove_user_channel,
-    due_users, get_user_window_messages, save_digest
+    due_users, get_user_window_messages, save_digest, get_system_stats
 )
 from common.summarize import build_digest
 
@@ -56,6 +56,7 @@ HELP = (
     "/digest_now — прислать дайджест за последнее окно\n"
     "/plan — тарифы\n"
     "/buy — оформить Pro (заглушка)\n"
+    "/debug — статистика системы (для отладки)\n"
 )
 
 # ---------- UTILS ----------
@@ -201,6 +202,24 @@ async def on_buy(client, message):
         logger.exception("Error in /buy")
         await message.reply_text("Произошла ошибка.")
 
+@bot.on_message(filters.command("debug") & filters.private)
+async def on_debug(client, message):
+    try:
+        stats = get_system_stats()
+        debug_text = (
+            f"📊 Статистика системы:\n\n"
+            f"👥 Пользователей: {stats['users_count']}\n"
+            f"📺 Активных каналов: {stats['active_channels']}\n"
+            f"🔗 Подписок: {stats['subscriptions_count']}\n"
+            f"📨 Сообщений за 24ч: {stats['messages_24h']}\n"
+            f"📋 Дайджестов за 24ч: {stats['digests_24h']}\n\n"
+            f"⏰ Текущее время: {datetime.now(TZ).strftime('%H:%M:%S %Z')}"
+        )
+        await message.reply_text(debug_text)
+    except Exception:
+        logger.exception("Error in /debug")
+        await message.reply_text("Ошибка получения статистики.")
+
 @bot.on_message(filters.private)
 async def on_private_message(client, message):
     logger.info(f"Caught a non-command private message from {message.from_user.id}: {message.text!r}")
@@ -256,7 +275,7 @@ def startup_tasks():
     logger.info("Running startup tasks...")
     try:
         run_migrations()
-        scheduler.add_job(scheduler_tick, "cron", minute="0,30")
+        scheduler.add_job(scheduler_tick, "cron", minute="0,30", id="digest_scheduler")
         scheduler.start()
         logger.info("Migrations and scheduler setup complete.")
     except Exception:

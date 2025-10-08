@@ -69,14 +69,17 @@ async def main():
     run_migrations()
     app = Client(SESSION_NAME, api_id=API_ID, api_hash=API_HASH, workdir=SESSIONS_DIR)
     async with app:
+        print(f"[reader] Started polling service. Session: {SESSION_NAME}")
         while True:
             channels = fetch_channels()
+            print(f"[reader] Found {len(channels)} active channels to poll")
             if not channels:
                 print("[reader] No channels to poll. Sleeping...")
                 await asyncio.sleep(CYCLE_PAUSE)
                 continue
             for ch in channels:
                 await poll_channel(app, ch)
+            print(f"[reader] Completed polling cycle. Sleeping for {CYCLE_PAUSE}s...")
             await asyncio.sleep(CYCLE_PAUSE)
 
 if __name__ == "__main__":
