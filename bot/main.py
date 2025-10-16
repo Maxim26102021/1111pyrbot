@@ -37,8 +37,14 @@ except (ValueError, TypeError) as e:
     logger.critical(f"FATAL: Env variables are not configured correctly. Error: {e}")
     sys.exit(1)
 
+DEFAULT_SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sessions")
+SESSION_DIR = os.getenv("TELEGRAM_SESSION_DIR", os.path.abspath(DEFAULT_SESSION_DIR))
+SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "bot")
+os.makedirs(SESSION_DIR, exist_ok=True)
+SESSION_PATH = os.path.join(SESSION_DIR, SESSION_NAME)
+
 bot = Client(
-    "/app/sessions/bot",
+    SESSION_PATH,
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
