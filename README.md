@@ -52,6 +52,13 @@
 - Для каждого активного пользователя берёт summaries за `DIGEST_LOOKBACK_HOURS`, создаёт записи в `digests`/`digest_items` и ставит `send_digest` в очередь `QUEUE_BOT`.
 - Проверить работу можно по логам Celery Beat (`docker compose logs scheduler`) — там будет видно следующее запускаемое время.
 
+## Bot
+
+- `services/bot` — тонкий aiogram 3.x бот: диалоги и доставка дайджестов.
+- Celery worker слушает очередь `QUEUE_BOT` и отправляет сообщения chunk-и, учитывая `TELEGRAM_MAX_MESSAGE` и FLOOD_WAIT.
+- Команда `/preview_sample` запрашивает свежие summary, при необходимости ставит задачи в `summarize_priority` и отправляет результат через `send_digest.delay`.
+- В настройках можно задать `TELEGRAM_SLEEP_ON_FLOOD` (auto или секунды) и `PREVIEW_SAMPLE_LIMIT`.
+
 ## Структура
 
 - `deploy/docker-compose.yml` — инфраструктура (Postgres, Redis, миграции, сервисы).

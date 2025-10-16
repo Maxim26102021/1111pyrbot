@@ -1,5 +1,5 @@
 celery==5.4.0
-pydantic==2.9.1
+pydantic==2.8.2
 pydantic-settings==2.5.2
 tenacity==8.5.0
 sqlalchemy==2.0.32
