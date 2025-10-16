@@ -74,7 +74,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - telethon_sessions:/sessions
+      - ../telethon_sessions:/sessions
     networks:
       - internal
 
@@ -127,7 +127,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  telethon_sessions:
 
 networks:
   internal:

@@ -29,6 +29,12 @@
 
 4. После первого запуска `docker compose -f deploy/docker-compose.yml up -d` автоматически выполнит сервис `migrate` и лишь затем стартует остальные приложения.
 
+## Telethon сессии
+
+- Сервис `ingest` ожидает `.session` файлы в каталоге `./telethon_sessions` (он пробрасывается как volume в контейнер `/sessions`).
+- Чтобы получить `.session`, используйте `telethon` скрипт авторизации (например, `reader/login_service_account.py`) и поместите готовый файл в `telethon_sessions/`.
+- Если нужно задать конкретный набор каналов без БД, заполните `INGEST_CHANNEL_IDS` (CSV числовых `tg_channel_id`) и установите `INGEST_CHANNEL_SOURCE=env`.
+
 ## Структура
 
 - `deploy/docker-compose.yml` — инфраструктура (Postgres, Redis, миграции, сервисы).
