@@ -55,22 +55,7 @@ def _install_telethon_stub() -> None:
     sys.modules.setdefault("telethon.errors", errors_module)
 
 
-def _install_celery_stub() -> None:
-    celery_module = ModuleType("celery")
-
-    class _Celery:
-        def __init__(self, *args, **kwargs) -> None:  # pragma: no cover - dummy init
-            pass
-
-        def send_task(self, *args, **kwargs) -> None:  # pragma: no cover - dummy send
-            pass
-
-    celery_module.Celery = _Celery
-    sys.modules.setdefault("celery", celery_module)
-
-
 _install_telethon_stub()
-_install_celery_stub()
 
 from services.ingest.app.worker import MessageProcessor
 

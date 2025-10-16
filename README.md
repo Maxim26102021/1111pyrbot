@@ -35,6 +35,17 @@
 - Чтобы получить `.session`, используйте `telethon` скрипт авторизации (например, `reader/login_service_account.py`) и поместите готовый файл в `telethon_sessions/`.
 - Если нужно задать конкретный набор каналов без БД, заполните `INGEST_CHANNEL_IDS` (CSV числовых `tg_channel_id`) и установите `INGEST_CHANNEL_SOURCE=env`.
 
+## Summarizer
+
+- Сервис `services/summarizer` поднимает FastAPI (`/health`, `/status`) и Celery worker для очередей `summarize`, `summarize_priority`.
+- LLM вызывается через `libs/core/llm.py`; по умолчанию модель `LLM_MODEL=gpt-4o-mini`, таймаут `SUMMARIZE_TIMEOUT_SECONDS=45`. Кеширование идёт по `posts.text_hash`.
+- При коротких текстах (< `MIN_TEXT_LEN`) сохраняется техническая заглушка, при RateLimit ловится `RateLimitError` и Celery делает экспоненциальные ретраи.
+- Ручной запуск задачи из Python-консоли:
+  ```python
+  from services.summarizer.app.tasks import summarize_post
+  summarize_post.delay(123)
+  ```
+
 ## Структура
 
 - `deploy/docker-compose.yml` — инфраструктура (Postgres, Redis, миграции, сервисы).
