@@ -46,6 +46,12 @@
   summarize_post.delay(123)
   ```
 
+## Scheduler
+
+- `services/scheduler` — Celery Beat + worker, планирует задачу `build_and_dispatch_digest` с интервалом `DIGEST_PERIOD_MINUTES` и джиттером ±`DIGEST_JITTER_SECONDS`.
+- Для каждого активного пользователя берёт summaries за `DIGEST_LOOKBACK_HOURS`, создаёт записи в `digests`/`digest_items` и ставит `send_digest` в очередь `QUEUE_BOT`.
+- Проверить работу можно по логам Celery Beat (`docker compose logs scheduler`) — там будет видно следующее запускаемое время.
+
 ## Структура
 
 - `deploy/docker-compose.yml` — инфраструктура (Postgres, Redis, миграции, сервисы).

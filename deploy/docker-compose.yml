@@ -108,13 +108,21 @@ services:
       dockerfile: services/scheduler/Dockerfile
     env_file:
       - .env
+    command: ["bash", "-lc", "./services/scheduler/entrypoint.sh"]
     depends_on:
       migrate:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       summarizer:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A services.scheduler.app.celery_app inspect ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - internal
 
