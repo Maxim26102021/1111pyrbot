@@ -1,4 +1,7 @@
 .env
 .idea
-.github/workflows
+.github/workflows/deploy.yml
 docker-compose.yml
+!deploy/docker-compose.yml
+__pycache__/
+telethon_sessions/*.session

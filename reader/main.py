@@ -1,4 +1,5 @@
 import os, asyncio, pytz, logging
+# TODO(refactor): remove legacy reader once services/ingest/app/worker.py replaces channel polling.
 from datetime import datetime, timedelta
 from pyrogram import Client
 from sqlalchemy import text
