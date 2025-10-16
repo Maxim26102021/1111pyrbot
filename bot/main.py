@@ -37,8 +37,9 @@ except (ValueError, TypeError) as e:
     logger.critical(f"FATAL: Env variables are not configured correctly. Error: {e}")
     sys.exit(1)
 
-DEFAULT_SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sessions")
-SESSION_DIR = os.getenv("TELEGRAM_SESSION_DIR", os.path.abspath(DEFAULT_SESSION_DIR))
+DEFAULT_SESSION_DIR = os.path.join(os.getcwd(), "sessions")
+SESSION_DIR = os.getenv("TELEGRAM_SESSION_DIR", DEFAULT_SESSION_DIR)
+SESSION_DIR = os.path.abspath(SESSION_DIR)
 SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "bot")
 os.makedirs(SESSION_DIR, exist_ok=True)
 SESSION_PATH = os.path.join(SESSION_DIR, SESSION_NAME)
@@ -251,15 +252,18 @@ async def send_digest_to_user(user):
         items_list = list(uniq.values())
 
         if not items_list:
-            logger.info(f"No new messages for user {user_id} in window {start} - {end}, skipping digest.")
-            # Можно отправить сообщение "Нет новостей", если нужно
-            # await bot.send_message(tg_id, "За последнее время не было новостей.")
+            logger.info(f"No new messages for user {user_id} in window {start} - {end}, notifying user.")
+            await bot.send_message(tg_id, "За последнее окно не нашлось новых новостей.")
             return
 
-        digest = (build_digest(items_list) or "").strip()
-        if not digest or digest == "НЕДОСТАТОЧНО НОВОСТЕЙ":
-            logger.info(f"Not enough news to build digest for user {user_id}.")
+        digest, digest_source = build_digest(items_list)
+        if not digest:
+            logger.info(f"Digest builder returned empty result for user {user_id}.")
+            await bot.send_message(tg_id, "За последнее окно не нашлось новых новостей.")
             return
+
+        if digest_source != "llm":
+            logger.info(f"Delivering digest to user {user_id} using {digest_source} content.")
 
         save_digest(user_id, start, end, len(items_list), digest, sent_to="user")
         await send_text_in_chunks(chat_id=tg_id, text=digest)
