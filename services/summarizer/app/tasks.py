@@ -9,6 +9,7 @@ import httpx
 from openai import APIStatusError, APITimeoutError, RateLimitError as OpenAIRateLimitError
 
 from libs.core.llm import LLMClient
+from libs.core.logging import json_log
 from libs.core.util import hash_text
 
 from .celery_app import celery_app, settings
@@ -20,6 +21,14 @@ from .dao import (
 )
 
 logger = logging.getLogger(__name__)
+SERVICE = "summarizer"
+
+METRICS = {
+    "requests_total": 0,
+    "cached_total": 0,
+    "technical_total": 0,
+    "errors_total": 0,
+}
 
 TECHNICAL_SUMMARY = "Короткая заметка, без суммаризации."
 
@@ -37,14 +46,17 @@ llm_client = LLMClient(
 
 
 async def summarize_post_logic(post_id: int, *, priority: bool = False, retries: int = 0) -> None:
+    METRICS["requests_total"] += 1
     post = await fetch_post(settings.database_url, post_id)
     if not post:
-        logger.warning("Post not found", extra={"post_id": post_id})
+        METRICS["errors_total"] += 1
+        json_log(logger, "warning", "post_not_found", service=SERVICE, post_id=post_id)
         return
 
     existing_summary = await find_summary_by_post(settings.database_url, post_id)
     if existing_summary:
-        logger.info("Summary already exists", extra={"post_id": post_id})
+        METRICS["cached_total"] += 1
+        json_log(logger, "info", "summary_exists", service=SERVICE, post_id=post_id)
         return
 
     raw_text = (post.get("raw_text") or "").strip()
@@ -60,9 +72,14 @@ async def summarize_post_logic(post_id: int, *, priority: bool = False, retries:
             tokens_out=None,
             cost=None,
         )
-        logger.info(
-            "Stored technical summary due to short text",
-            extra={"post_id": post_id, "length": len(raw_text)},
+        METRICS["technical_total"] += 1
+        json_log(
+            logger,
+            "info",
+            "technical_summary_stored",
+            service=SERVICE,
+            post_id=post_id,
+            length=len(raw_text),
         )
         return
 
@@ -84,9 +101,14 @@ async def summarize_post_logic(post_id: int, *, priority: bool = False, retries:
                     tokens_out=duplicate_summary.get("tokens_out"),
                     cost=duplicate_summary.get("cost"),
                 )
-                logger.info(
-                    "Reused cached summary",
-                    extra={"post_id": post_id, "source_post_id": duplicate_post_id},
+                METRICS["cached_total"] += 1
+                json_log(
+                    logger,
+                    "info",
+                    "summary_reused",
+                    service=SERVICE,
+                    post_id=post_id,
+                    source_post_id=duplicate_post_id,
                 )
                 return
 
@@ -111,11 +133,14 @@ async def summarize_post_logic(post_id: int, *, priority: bool = False, retries:
             raise RateLimitError(str(exc)) from exc
         raise
     except httpx.TimeoutException as exc:
+        METRICS["errors_total"] += 1
         raise RateLimitError(str(exc)) from exc
     except asyncio.TimeoutError as exc:
+        METRICS["errors_total"] += 1
         raise RateLimitError(str(exc)) from exc
     except httpx.HTTPError as exc:
-        logger.exception("HTTP error while summarizing", extra={"post_id": post_id})
+        METRICS["errors_total"] += 1
+        json_log(logger, "error", "http_error", service=SERVICE, post_id=post_id, error=str(exc))
         raise
     finally:
         latency_ms = (time.perf_counter() - start_time) * 1000
@@ -138,16 +163,17 @@ async def summarize_post_logic(post_id: int, *, priority: bool = False, retries:
         cost=cost,
     )
 
-    logger.info(
-        "Summary stored",
-        extra={
-            "post_id": post_id,
-            "model": settings.llm_model,
-            "tokens_in": tokens_in,
-            "tokens_out": tokens_out,
-            "latency_ms": latency_ms,
-            "retries": retries,
-        },
+    json_log(
+        logger,
+        "info",
+        "summary_stored",
+        service=SERVICE,
+        post_id=post_id,
+        model=settings.llm_model,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        latency_ms=latency_ms,
+        retries=retries,
     )
 
 

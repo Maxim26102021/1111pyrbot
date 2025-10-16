@@ -4,11 +4,17 @@ import logging
 
 from fastapi import FastAPI
 
+from libs.core.logging import json_log
+
 from .celery_app import celery_app, settings
+from .tasks import METRICS
+
+logger = logging.getLogger(__name__)
+SERVICE = "summarizer-api"
 
 logging.basicConfig(
     level=settings.log_level.upper(),
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    format="%(message)s",
 )
 
 app = FastAPI(title="Summarizer Service", version="1.0.0")
@@ -26,8 +32,8 @@ async def status() -> dict[str, object]:
         insp = celery_app.control.inspect(timeout=1.0)
         if insp:
             queues = insp.active_queues() or {}
-    except Exception:
-        logging.getLogger(__name__).warning("Failed to inspect celery queues", exc_info=True)
+    except Exception as exc:
+        json_log(logger, "warning", "celery_inspect_failed", service=SERVICE, error=str(exc))
         queues = {}
 
     return {
@@ -36,6 +42,11 @@ async def status() -> dict[str, object]:
     }
 
 
+@app.get("/metrics")
+async def metrics() -> dict[str, int]:
+    return METRICS
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
-    logging.getLogger(__name__).info("Summarizer API started")
+    json_log(logger, "info", "api_startup", service=SERVICE)

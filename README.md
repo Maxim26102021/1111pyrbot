@@ -1,6 +1,31 @@
 # Promteo Digest Platform (refactor in progress)
 
-## Быстрый старт окружения
+## Быстрый старт (dev/mock)
+
+1. Заполните `deploy/.env` и запустите профиль dev с моковым LLM:
+   ```bash
+   make dev-up
+   ```
+
+2. Примените миграции и подготовьте тестовые данные:
+   ```bash
+   make migrate
+   make seed-demo
+   ```
+
+3. Отправьте демо-пост и дождитесь дайджеста:
+   ```bash
+   make fake-post
+   # форсируем планировщик (однократно)
+   python - <<'PY'
+from services.scheduler.app.tasks import build_and_dispatch_digest
+build_and_dispatch_digest()
+PY
+   ```
+
+4. Посмотрите логи бота: `docker logs -f <контейнер bot>` — увидите JSON события `digest_delivered` и `messages_sent`.
+
+## Prod профиль
 
 1. Скопируйте пример переменных окружения и заполните значения:
    ```bash
@@ -27,7 +52,10 @@
    docker compose -f deploy/docker-compose.yml run --rm migrate
    ```
 
-4. После первого запуска `docker compose -f deploy/docker-compose.yml up -d` автоматически выполнит сервис `migrate` и лишь затем стартует остальные приложения.
+4. Продовый профиль стартует без моков:
+   ```bash
+   docker compose -f deploy/docker-compose.yml --profile prod up -d --build
+   ```
 
 ## Telethon сессии
 
@@ -78,7 +106,7 @@ PY
        -H "X-Signature: $SIG" \
        -d "$BODY"
   ```
-
+  
 ## Структура
 
 - `deploy/docker-compose.yml` — инфраструктура (Postgres, Redis, миграции, сервисы).
@@ -87,6 +115,37 @@ PY
 - `libs/core/` — общие утилиты, DTO и клиенты.
 - `services/*` — заготовки сервисов бот/ingest/summarizer/scheduler/payments.
 - `tests/smoke/` — интеграционные проверки инфраструктуры.
+- `tests/e2e/` — сценарий e2e-smoke без Telegram (использует mock LLM и in-memory DAO).
+- `SECURITY.md` — чек-лист по безопасности и приватности.
+
+## E2E smoke
+
+Автотест `tests/e2e/test_smoke_flow.py` прогоняет цепочку «ингест → summarize → scheduler → bot» в памяти. Запустить вручную можно командой:
+```bash
+PYTHONPATH=. LLM_MODE=mock pytest tests/e2e/test_smoke_flow.py
+```
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) выполняет lint, pytest и сборку Docker-образов (`:ci-<sha>`). Артефакт `reports/junit.xml` доступен после прогона.
+
+## Логи и метрики
+
+- Все сервисы пишут JSON-логи через `libs.core.logging.json_log` (поля `event`, `service`, `latency_ms`, `user_id` и др.).
+- Summarizer и payments имеют `/metrics` (JSON-счётчики запросов, ошибок, повторов).
+- `docker logs -f <service>` — быстрый способ посмотреть поток событий; ищите `digest_enqueued`, `digest_delivered`, `webhook_processed`.
+
+## Комплаенс и фич-флаги
+
+- `COMPLIANCE_MODE=true` отключает потенциальные «чистки» и вспомогательные действия (флаг доступен в .env, кодом обрабатывается в сервисах).
+- `LLM_MODE=mock` позволяет запускать платформу без подключения внешнего LLM (используется в dev профиле и тестах).
+- Для деталей см. комментарии в `SECURITY.md` и код в `libs/core/llm.py`.
+
+## Известные риски
+
+- Передача текстов постов во внешний LLM может нарушать ToS каналов — используйте `LLM_MODE=mock`, если необходимо.
+- Webhook-подписи необходимо хранить в секрете (`PAYMENTS_WEBHOOK_SECRET`). Ошибки подписи логируются.
+- Телеграм-сессии должны храниться только локально (volume `telethon_sessions/`).
 
 ## Ссылки
 

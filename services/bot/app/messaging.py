@@ -8,10 +8,12 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError, TelegramRetryAfter
 
+from libs.core.logging import json_log
 from .config import load_settings
 from .formatting import split_message
 
 logger = logging.getLogger(__name__)
+SERVICE = "bot"
 
 settings = load_settings()
 
@@ -22,6 +24,11 @@ bot = Bot(
 
 MAX_RETRIES = 3
 
+METRICS = {
+    "messages_sent": 0,
+    "flood_waits": 0,
+    "fatal_errors": 0,
+}
 
 class RetryableTelegramError(Exception):
     def __init__(self, delay: Optional[float] = None) -> None:
@@ -58,7 +65,8 @@ async def send_text(tg_user_id: int, text: str, parse_mode: str | None = None) -
                 delay = exc.retry_after if settings.telegram_sleep_on_flood == "auto" else float(settings.telegram_sleep_on_flood)
                 if attempt > MAX_RETRIES:
                     raise RetryableTelegramError(delay) from exc
-                logger.warning("Flood wait, sleeping", extra={"user_id": tg_user_id, "delay": delay})
+                METRICS["flood_waits"] += 1
+                json_log(logger, "warning", "flood_wait", service=SERVICE, user_id=tg_user_id, delay=delay)
                 await asyncio.sleep(delay)
             except TelegramNetworkError as exc:
                 attempt += 1
@@ -66,5 +74,7 @@ async def send_text(tg_user_id: int, text: str, parse_mode: str | None = None) -
                     raise RetryableTelegramError() from exc
                 await asyncio.sleep(2 * attempt)
             except TelegramForbiddenError as exc:
+                METRICS["fatal_errors"] += 1
                 raise FatalTelegramError(str(exc)) from exc
+    METRICS["messages_sent"] += sent
     return sent

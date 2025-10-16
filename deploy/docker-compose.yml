@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    profiles: ["dev", "prod"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-digest}
@@ -20,6 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    profiles: ["dev", "prod"]
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     volumes:
@@ -36,6 +38,7 @@ services:
     build:
       context: ../
       dockerfile: services/migrate/Dockerfile
+    profiles: ["dev", "prod"]
     env_file:
       - .env
     depends_on:
@@ -48,6 +51,7 @@ services:
     build:
       context: ../
       dockerfile: services/bot/Dockerfile
+    profiles: ["dev", "prod"]
     env_file:
       - .env
     command: ["bash", "-lc", "./services/bot/entrypoint.sh"]
@@ -71,6 +75,7 @@ services:
     build:
       context: ../
       dockerfile: services/ingest/Dockerfile
+    profiles: ["dev", "prod"]
     env_file:
       - .env
     depends_on:
@@ -89,6 +94,7 @@ services:
     build:
       context: ../
       dockerfile: services/summarizer/Dockerfile
+    profiles: ["dev", "prod"]
     command: ["bash", "-lc", "./services/summarizer/entrypoint.sh"]
     env_file:
       - .env
@@ -113,6 +119,7 @@ services:
     build:
       context: ../
       dockerfile: services/scheduler/Dockerfile
+    profiles: ["dev", "prod"]
     env_file:
       - .env
     command: ["bash", "-lc", "./services/scheduler/entrypoint.sh"]
@@ -137,6 +144,7 @@ services:
     build:
       context: ../
       dockerfile: services/payments/Dockerfile
+    profiles: ["dev", "prod"]
     env_file:
       - .env
     command: ["bash", "-lc", "./services/payments/entrypoint.sh"]

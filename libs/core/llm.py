@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import os
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -16,7 +18,8 @@ class LLMClient:
         max_output_tokens: int = 512,
         temperature: float = 0.2,
     ) -> None:
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._mode = os.getenv("LLM_MODE", "").lower()
+        self._client = None if self._mode == "mock" else AsyncOpenAI(api_key=api_key)
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
@@ -28,6 +31,9 @@ class LLMClient:
         temperature: float | None = None,
         max_output_tokens: int | None = None,
     ) -> tuple[str, dict[str, int]]:
+        if self._mode == "mock":
+            return _mock_response(prompt)
+
         response = await self._client.responses.create(
             model=self._model,
             input=prompt,
@@ -53,3 +59,18 @@ def _extract_usage(response: Any) -> dict[str, int]:
         "completion_tokens": int(completion_tokens or 0),
         "total_tokens": int(total_tokens or 0),
     }
+
+
+def _mock_response(prompt: str) -> tuple[str, dict[str, int]]:
+    seed = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    items = []
+    for idx in range(3):
+        chunk = seed[idx * 6 : (idx + 1) * 6]
+        items.append(f"• Mock summary item {idx + 1} ({chunk})")
+    text = "⚡ Mock Digest\n" + "\n".join(items)
+    usage = {
+        "prompt_tokens": len(prompt.split()),
+        "completion_tokens": 42,
+        "total_tokens": len(prompt.split()) + 42,
+    }
+    return text, usage
