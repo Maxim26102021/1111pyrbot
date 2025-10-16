@@ -59,6 +59,26 @@
 - Команда `/preview_sample` запрашивает свежие summary, при необходимости ставит задачи в `summarize_priority` и отправляет результат через `send_digest.delay`.
 - В настройках можно задать `TELEGRAM_SLEEP_ON_FLOOD` (auto или секунды) и `PREVIEW_SAMPLE_LIMIT`.
 
+## Payments
+
+- `services/payments` — FastAPI вебхук, принимает события `payment.succeeded|failed|pending`, проверяет HMAC подпись и сохраняет платеж в `payments` с идемпотентным UPSERT.
+- Успешные платежи активируют подписку пользователя: `DEFAULT_SUBSCRIPTION_PLAN` и продление на `SUBSCRIPTION_DURATION_DAYS`.
+- Пример запроса:
+  ```bash
+  BODY='{"event":"payment.succeeded","ext_id":"abc123","user_id":1,"amount":299.00,"currency":"RUB","paid_at":"2025-10-16T18:00:00Z"}'
+  SIG=$(python - <<'PY'
+import hmac, binascii, hashlib, os
+secret = os.environ.get('PAYMENTS_WEBHOOK_SECRET', 'secret')
+body = os.environ['BODY'].encode()
+print(hmac.new(secret.encode(), body, hashlib.sha256).hexdigest())
+PY
+)
+  curl -X POST http://localhost:8080/webhook/tbank \
+       -H "Content-Type: application/json" \
+       -H "X-Signature: $SIG" \
+       -d "$BODY"
+  ```
+
 ## Структура
 
 - `deploy/docker-compose.yml` — инфраструктура (Postgres, Redis, миграции, сервисы).
