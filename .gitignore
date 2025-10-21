@@ -5,3 +5,4 @@ docker-compose.yml
 !deploy/docker-compose.yml
 __pycache__/
 telethon_sessions/*.session
+./requirements.txt

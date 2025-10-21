@@ -49,7 +49,6 @@ def _fallback_digest(items: List[Dict[str, str]]) -> str:
 
 
 def build_digest(items: List[Dict[str, str]]) -> Tuple[Optional[str], str]:
-    """Вернуть дайджест и источник (llm|fallback|empty|error)."""
     if not items:
         return None, "empty"
 
@@ -59,12 +58,12 @@ def build_digest(items: List[Dict[str, str]]) -> Tuple[Optional[str], str]:
     if len(items) < 3 or not model:
         return fallback, "fallback"
 
-
     prompt = PROMPT.format(
-    content="\n\n".join(
-        f"- [{next((line for line in (it.get('text') or '').strip().splitlines() if line), '')[:120]}]({it.get('link') or ''})\n{(it.get('text') or '')[:300]}"
-        for it in items
-    ))
+        content="\n\n".join(
+            f"- [{next((line for line in (it.get('text') or '').strip().splitlines() if line), '')[:120]}]({it.get('link') or ''})\n{(it.get('text') or '')[:300]}"
+            for it in items
+        )
+    )
 
     try:
         resp = model.generate_content(prompt, generation_config={"temperature": 0.25})
@@ -72,7 +71,7 @@ def build_digest(items: List[Dict[str, str]]) -> Tuple[Optional[str], str]:
         if txt:
             return txt, "llm"
         logger.warning("LLM returned empty response, using fallback")
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         logger.warning("LLM call failed (%s), using fallback", exc)
         return fallback, "error"
 
