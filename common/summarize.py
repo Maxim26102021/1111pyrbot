@@ -59,6 +59,7 @@ def build_digest(items: List[Dict[str, str]]) -> Tuple[Optional[str], str]:
     if len(items) < 3 or not model:
         return fallback, "fallback"
 
+
     prompt = PROMPT.format(
     content="\n\n".join(
         f"- [{next((line for line in (it.get('text') or '').strip().splitlines() if line), '')[:120]}]({it.get('link') or ''})\n{(it.get('text') or '')[:300]}"
