@@ -1,2 +1,0 @@
-sqlalchemy==2.0.32
-asyncpg==0.29.0

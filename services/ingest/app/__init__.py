@@ -1,1 +1,0 @@
-"""Ingest service package."""

@@ -1,5 +1,9 @@
 -- Create default postgres role (required for some tools)
-CREATE ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres_password';
+DO $$   BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'postgres') THEN
+        CREATE ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres_password';
+    END IF;
+END   $$;
 
 -- Create prometeo role and database
 CREATE ROLE prometeo WITH LOGIN PASSWORD 'promteo_password';

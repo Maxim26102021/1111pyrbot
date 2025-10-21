@@ -1,1 +1,0 @@
-"""Digest scheduler service package."""

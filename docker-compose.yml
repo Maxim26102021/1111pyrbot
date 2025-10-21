@@ -5,14 +5,16 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./common/sql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10  # Увеличим количество попыток
+      start_period: 30s  # Дадим базе больше времени на запуск
     restart: unless-stopped
     ports:
       - "0.0.0.0:5433:5432"  # Важно: добавьте эту строку, если её нет

@@ -1,1 +1,0 @@
-"""Payments webhook service."""

@@ -60,11 +60,10 @@ def build_digest(items: List[Dict[str, str]]) -> Tuple[Optional[str], str]:
         return fallback, "fallback"
 
     prompt = PROMPT.format(
-        content="\n\n".join(
-            f"- [{(it.get('text') or '').strip().split('\\n')[0][:120]}]({it.get('link') or ''})\n{(it.get('text') or '')[:300]}"
-            for it in items
-        )
-    )
+    content="\n\n".join(
+        f"- [{next((line for line in (it.get('text') or '').strip().splitlines() if line), '')[:120]}]({it.get('link') or ''})\n{(it.get('text') or '')[:300]}"
+        for it in items
+    ))
 
     try:
         resp = model.generate_content(prompt, generation_config={"temperature": 0.25})
